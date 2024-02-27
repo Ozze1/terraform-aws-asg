@@ -48,7 +48,7 @@ resource "aws_security_group" "main" {
     var.tags,
     {
       "Name" = "${var.name_prefix}-sg"
-    },
+    }
   )
 }
 
@@ -62,150 +62,60 @@ resource "aws_security_group_rule" "egress" {
   ipv6_cidr_blocks  = ["::/0"]
 }
 
-resource "aws_launch_configuration" "main" {
-  name_prefix          = "${var.name_prefix}-asg-"
-  instance_type        = var.instance_type
-  iam_instance_profile = aws_iam_instance_profile.main.name
-  security_groups      = [aws_security_group.main.id]
-  image_id             = var.instance_ami
-  key_name             = var.instance_key
-  user_data            = var.user_data
-  user_data_base64     = var.user_data_base64
-
-  dynamic "ebs_block_device" {
-    iterator = device
-    for_each = var.ebs_block_devices
-
-    content {
-      device_name           = lookup(device.value, "device_name", null)
-      delete_on_termination = lookup(device.value, "delete_on_termination", null)
-      encrypted             = lookup(device.value, "encrypted", null)
-      iops                  = lookup(device.value, "iops", null)
-      no_device             = lookup(device.value, "no_device", null)
-      snapshot_id           = lookup(device.value, "snapshot_id", null)
-      volume_size           = lookup(device.value, "volume_size", null)
-      volume_type           = lookup(device.value, "volume_type", null)
-    }
-  }
-
-  root_block_device {
-    volume_type           = "gp2"
-    volume_size           = var.instance_volume_size
-    delete_on_termination = true
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
 
 locals {
-  asg_tags = [
-    for k, v in merge(var.tags, { "Name" = var.name_prefix }) : {
-      Key               = k
-      Value             = v
-      PropagateAtLaunch = "TRUE"
-    }
-  ]
-}
-
-resource "aws_launch_template" "foo" {
-  name = "foo"
-
-  block_device_mappings {
-    device_name = "/dev/sdf"
-
-    ebs {
-      volume_size = 20
-    }
+    asg_tags = [
+      for k, v in merge(var.tags, { "Name" = var.name_prefix }) : {
+        Key               = k
+        Value             = v
+        PropagateAtLaunch = "TRUE"
+      }
+    ]
   }
 
-  capacity_reservation_specification {
-    capacity_reservation_preference = "open"
-  }
-
-  cpu_options {
-    core_count       = 4
-    threads_per_core = 2
-  }
-
-  credit_specification {
-    cpu_credits = "standard"
-  }
-
-  disable_api_stop        = true
-  disable_api_termination = true
-
-  ebs_optimized = true
-
-  elastic_gpu_specifications {
-    type = "test"
-  }
-
-  elastic_inference_accelerator {
-    type = "eia1.medium"
-  }
+resource "aws_launch_template" "main" { 
+  name_prefix            = "${var.name_prefix}-asg-"
+  image_id               = var.instance_ami
+  key_name               = var.instance_key
+  user_data              = var.user_data_base64 != null ? base64decode(var.user_data_base64) : var.user_data
+  instance_type          = var.instance_type
+  vpc_security_group_ids = [aws_security_group.main.id]
 
   iam_instance_profile {
-    name = "test"
+    name = aws_iam_instance_profile.main.name
   }
+  
 
-  image_id = "ami-test"
-
-  instance_initiated_shutdown_behavior = "terminate"
-
-  instance_market_options {
-    market_type = "spot"
-  }
-
-  instance_type = "t2.micro"
-
-  kernel_id = "test"
-
-  key_name = "test"
-
-  license_specification {
-    license_configuration_arn = "arn:aws:license-manager:eu-west-1:123456789012:license-configuration:lic-0123456789abcdef0123456789abcdef"
-  }
-
-  metadata_options {
-    http_endpoint               = "enabled"
-    http_tokens                 = "required"
-    http_put_response_hop_limit = 1
-    instance_metadata_tags      = "enabled"
-  }
-
-  monitoring {
-    enabled = true
-  }
-
-  network_interfaces {
-    associate_public_ip_address = true
-  }
-
-  placement {
-    availability_zone = "us-west-2a"
-  }
-
-  ram_disk_id = "test"
-
-  vpc_security_group_ids = ["sg-12345678"]
-
-  tag_specifications {
-    resource_type = "instance"
-
-    tags = {
-      Name = "test"
+ 
+   dynamic "block_device_mappings"  { 
+    for_each = var.ebs_block_devices
+    
+    content { 
+      device_name     = lookup(block_device_mappings.value, "device_name", null)
+      ebs {
+        encrypted     = lookup(block_device_mappings.value, "encrypted", null)
+        iops          = lookup(block_device_mappings.value, "iops", null)
+        snapshot_id   = lookup(block_device_mappings.value, "snapshot_id", null)
+        volume_size   = lookup(block_device_mappings.value, "volume_size", null)
+        volume_type   = lookup(block_device_mappings.value, "volume_type", null)
+      }
     }
-  }
+  }  
 
-  user_data = filebase64("${path.module}/example.sh")
+    block_device_mappings { 
+      device_name = "/dev/sda1"
+      ebs {
+        volume_type           = "gp2"
+        volume_size           = var.instance_volume_size
+        delete_on_termination = true
+      }
+ 
+  } 
+
 }
 
-
-
 resource "aws_cloudformation_stack" "main" {
-  depends_on    = [aws_launch_configuration.main]
+  depends_on    = [aws_launch_template.main]
   name          = "${var.name_prefix}-asg"
   template_body = <<EOF
 Description: "Autoscaling group created by Terraform."
@@ -216,7 +126,7 @@ Resources:
       Cooldown: 300
       HealthCheckType: "${var.health_check_type}"
       HealthCheckGracePeriod: 300
-      LaunchConfigurationName: "${aws_launch_configuration.main.id}"
+      LaunchTemplateName: "${aws_launch_template.main.id}"
       MinSize: "${var.min_size}"
       MaxSize: "${var.max_size}"
       MetricsCollection:
@@ -232,7 +142,7 @@ Resources:
             - GroupTotalInstances
       Tags: ${jsonencode(local.asg_tags)}
       TerminationPolicies:
-        - OldestLaunchConfiguration
+        - OldestLaunchTemplate
         - OldestInstance
         - Default
       VPCZoneIdentifier: ${jsonencode(var.subnet_ids)}
@@ -254,3 +164,4 @@ Outputs:
     Value: !Ref AutoScalingGroup
 EOF
 }
+  
