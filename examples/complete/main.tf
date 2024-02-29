@@ -49,7 +49,7 @@ module "asg" {
   instance_volume_size = 10
   min_size             = 2
   max_size             = 4
-  user_data_base64     = data.template_cloudinit_config.user_data.rendered
+  user_data            = base64encode(data.template_cloudinit_config.user_data.rendered)
 
   ebs_block_devices = [
     {
