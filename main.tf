@@ -77,7 +77,7 @@ resource "aws_launch_template" "main" {
   name_prefix            = "${var.name_prefix}-asg-"
   image_id               = var.instance_ami
   key_name               = var.instance_key
-  user_data              = var.user_data_base64 != null ? base64decode(var.user_data_base64) : var.user_data
+  user_data              = base64encode(var.user_data)
   instance_type          = var.instance_type
   vpc_security_group_ids = [aws_security_group.main.id]
 
@@ -86,7 +86,6 @@ resource "aws_launch_template" "main" {
   }
   
 
- 
    dynamic "block_device_mappings"  { 
     for_each = var.ebs_block_devices
     
