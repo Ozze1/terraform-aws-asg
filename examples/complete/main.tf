@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 0.14"
+  required_version = "~> 1.7.0"
 }
 
 provider "aws" {
@@ -10,8 +10,11 @@ data "aws_vpc" "main" {
   default = true
 }
 
-data "aws_subnet_ids" "main" {
-  vpc_id = data.aws_vpc.main.id
+data "aws_subnets" "main" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.main.id]
+  }
 }
 
 data "aws_ami" "linux2" {
@@ -43,7 +46,7 @@ module "asg" {
   source               = "../../"
   name_prefix          = var.name_prefix
   vpc_id               = data.aws_vpc.main.id
-  subnet_ids           = data.aws_subnet_ids.main.ids
+  subnet_ids           = data.aws_subnets.main.ids
   instance_ami         = data.aws_ami.linux2.id
   instance_policy      = data.aws_iam_policy_document.permissions.json
   instance_volume_size = 10
