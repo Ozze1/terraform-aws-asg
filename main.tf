@@ -64,52 +64,52 @@ resource "aws_security_group_rule" "egress" {
 
 
 locals {
-    asg_tags = [
-      for k, v in merge(var.tags, { "Name" = var.name_prefix }) : {
-        Key               = k
-        Value             = v
-        PropagateAtLaunch = "TRUE"
-      }
-    ]
-  }
+  asg_tags = [
+    for k, v in merge(var.tags, { "Name" = var.name_prefix }) : {
+      Key               = k
+      Value             = v
+      PropagateAtLaunch = "TRUE"
+    }
+  ]
+}
 
-resource "aws_launch_template" "main" { 
+resource "aws_launch_template" "main" {
   name_prefix            = "${var.name_prefix}-asg-"
   image_id               = var.instance_ami
   key_name               = var.instance_key
-  user_data              = base64encode(var.user_data)
+  user_data              = var.user_data
   instance_type          = var.instance_type
   vpc_security_group_ids = [aws_security_group.main.id]
 
   iam_instance_profile {
     name = aws_iam_instance_profile.main.name
   }
-  
 
-   dynamic "block_device_mappings"  { 
+
+  dynamic "block_device_mappings" {
     for_each = var.ebs_block_devices
-    
-    content { 
-      device_name     = lookup(block_device_mappings.value, "device_name", null)
+
+    content {
+      device_name = lookup(block_device_mappings.value, "device_name", null)
       ebs {
-        encrypted     = lookup(block_device_mappings.value, "encrypted", null)
-        iops          = lookup(block_device_mappings.value, "iops", null)
-        snapshot_id   = lookup(block_device_mappings.value, "snapshot_id", null)
-        volume_size   = lookup(block_device_mappings.value, "volume_size", null)
-        volume_type   = lookup(block_device_mappings.value, "volume_type", null)
+        encrypted   = lookup(block_device_mappings.value, "encrypted", null)
+        iops        = lookup(block_device_mappings.value, "iops", null)
+        snapshot_id = lookup(block_device_mappings.value, "snapshot_id", null)
+        volume_size = lookup(block_device_mappings.value, "volume_size", null)
+        volume_type = lookup(block_device_mappings.value, "volume_type", null)
       }
     }
-  }  
+  }
 
-    block_device_mappings { 
-      device_name = "/dev/sda1"
-      ebs {
-        volume_type           = "gp2"
-        volume_size           = var.instance_volume_size
-        delete_on_termination = true
-      }
- 
-  } 
+  block_device_mappings {
+    device_name = "/dev/sda1"
+    ebs {
+      volume_type           = "gp2"
+      volume_size           = var.instance_volume_size
+      delete_on_termination = true
+    }
+
+  }
 
 }
 
@@ -125,7 +125,9 @@ Resources:
       Cooldown: 300
       HealthCheckType: "${var.health_check_type}"
       HealthCheckGracePeriod: 300
-      LaunchTemplateName: "${aws_launch_template.main.id}"
+      LaunchTemplate: 
+        LaunchTemplateId: "${aws_launch_template.main.id}"
+        Version: "${aws_launch_template.main.latest_version}"
       MinSize: "${var.min_size}"
       MaxSize: "${var.max_size}"
       MetricsCollection:
